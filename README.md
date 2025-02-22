@@ -1,12 +1,6 @@
 # vboard
 *A virtual keyboard for Linux with Wayland support and extensive customization options.*
 
-<!-- 
-TODO: Add a screenshot of vboard in action
-The screenshot should show the virtual keyboard with the menu open
-to display the customization options
--->
-![vboard screenshot](https://path-to-your-screenshot.png)
 
 ## Overview
 vboard is a lightweight, customizable virtual keyboard designed for Linux systems with Wayland support. It provides an on-screen keyboard solution that's especially useful for:
