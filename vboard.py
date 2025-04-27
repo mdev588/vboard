@@ -7,8 +7,10 @@ import configparser
 os.environ['GDK_BACKEND'] = 'x11'
 
 gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
 from gi.repository import Gtk
 from gi.repository import GLib
+from gi.repository import Gdk
 
 
 key_mapping = {uinput.KEY_ESC: "Esc", uinput.KEY_1: "1", uinput.KEY_2: "2", uinput.KEY_3: "3", uinput.KEY_4: "4", uinput.KEY_5: "5", uinput.KEY_6: "6",
@@ -31,7 +33,7 @@ key_mapping = {uinput.KEY_ESC: "Esc", uinput.KEY_1: "1", uinput.KEY_2: "2", uinp
 class VirtualKeyboard(Gtk.Window):
     def __init__(self):
         super().__init__(title="Virtual Keyboard", name="toplevel")
-
+        
         self.set_border_width(0)
         self.set_resizable(True)
         self.set_keep_above(True)
@@ -41,6 +43,14 @@ class VirtualKeyboard(Gtk.Window):
         self.set_accept_focus(False)
         self.width=0
         self.height=0
+        
+        # Connect to the window's realize signal
+        self.connect("realize", self.on_realize)
+        
+        # Connect to screen change signals to handle rotation and monitor config changes
+        screen = Gdk.Screen.get_default()
+        screen.connect("size-changed", self.on_screen_changed)
+        screen.connect("monitors-changed", self.on_screen_changed)
 
         self.CONFIG_DIR = os.path.expanduser("~/.config/vboard")
         self.CONFIG_FILE = os.path.join(self.CONFIG_DIR, "settings.conf")
@@ -49,6 +59,8 @@ class VirtualKeyboard(Gtk.Window):
         self.bg_color = "0, 0, 0"  # background color
         self.opacity="0.90"
         self.text_color="white"
+        self.bottom_padding = 150  # default bottom margin padding
+        self.stick_to_bottom = True  # default stick-to-bottom disabled
         self.read_settings()
 
         self.modifiers = {
@@ -141,7 +153,39 @@ class VirtualKeyboard(Gtk.Window):
     def on_resize(self, widget, event):
         self.width, self.height = self.get_size()  # Get the current size after resize
 
+    def on_screen_changed(self, *args):
+        self.reposition_window()
 
+    def reposition_window(self):
+        # Only reposition if stick-to-bottom is enabled
+        if not self.stick_to_bottom:
+            return False
+        # Use primary monitor geometry when available
+        display = Gdk.Display.get_default()
+        monitor = display.get_primary_monitor()
+        if monitor:
+            geo = monitor.get_geometry()
+            mon_x, mon_y = geo.x, geo.y
+            mon_width, mon_height = geo.width, geo.height
+        else:
+            screen = Gdk.Screen.get_default()
+            mon_x, mon_y = 0, 0
+            mon_width, mon_height = screen.get_width(), screen.get_height()
+
+        # Get current window size
+        win_width, win_height = self.get_size()
+
+        # Calculate centered X and bottom Y with padding
+        padding = self.bottom_padding
+        x = mon_x + (mon_width - win_width) // 2
+        y = mon_y + mon_height - win_height - padding
+        self.move(x, y)
+        # Only run once
+        return False
+
+    def on_realize(self, widget):
+        # Initial positioning using primary monitor
+        self.reposition_window()
 
     def create_button(self, label_="", callback=None, callback2=None, callbacks=0):
         button= Gtk.Button(label=label_)
@@ -344,18 +388,26 @@ class VirtualKeyboard(Gtk.Window):
                 self.bg_color = self.config.get("DEFAULT", "bg_color" )
                 self.opacity = self.config.get("DEFAULT", "opacity" )
                 self.text_color = self.config.get("DEFAULT", "text_color", fallback="white" )
-                self.width=self.config.getint("DEFAULT", "width" , fallback=0)
-                self.height=self.config.getint("DEFAULT", "height", fallback=0)
-                print(f"rgba: {self.bg_color}, {self.opacity}")
-
+                self.width = self.config.getint("DEFAULT", "width", fallback=0)
+                self.height = self.config.getint("DEFAULT", "height", fallback=0)
+                # read bottom padding (margin to bottom)
+                self.bottom_padding = self.config.getint("DEFAULT", "bottom_padding", fallback=150)
+                self.stick_to_bottom = self.config.getboolean("DEFAULT", "stick_to_bottom", fallback=True)
         except configparser.Error as e:
             print(f"Warning: Could not read config file ({e}). Using default values.")
 
-
-
     def save_settings(self):
 
-        self.config["DEFAULT"] = {"bg_color": self.bg_color, "opacity": self.opacity, "text_color": self.text_color, "width": self.width, "height": self.height}
+        # Save settings including bottom_padding
+        self.config["DEFAULT"] = {
+            "bg_color": self.bg_color,
+            "opacity": self.opacity,
+            "text_color": self.text_color,
+            "width": str(self.width),
+            "height": str(self.height),
+            "bottom_padding": str(self.bottom_padding),
+            "stick_to_bottom": str(self.stick_to_bottom)
+        }
 
         try:
             with open(self.CONFIG_FILE, "w") as configfile:

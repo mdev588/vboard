@@ -91,7 +91,12 @@ vboard saves its settings to ~/.config/vboard/settings.conf. This configuration 
 - Background color
 - Opacity level
 - Text color
+- Bottom padding (distance in pixels from the bottom of the screen)
+- Stick-to-bottom (whether the keyboard snaps to the bottom center of the screen)
+
 You can manually edit this file or use the built-in interface controls to customize the appearance.
+
+*Known issue*: If `bottom_padding` is set to `0`, a few rows of the keyboard may be cropped by the display area; the cause is still under investigation.
 
 ### Customizing Keyboard Layout
 The keyboard layout is defined in the rows list in the source code. To modify the layout:
