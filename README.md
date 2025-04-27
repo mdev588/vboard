@@ -91,6 +91,8 @@ vboard saves its settings to ~/.config/vboard/settings.conf. This configuration 
 - Background color
 - Opacity level
 - Text color
+- Last window position and size (separately for landscape and portrait orientations)
+
 You can manually edit this file or use the built-in interface controls to customize the appearance.
 
 ### Customizing Keyboard Layout

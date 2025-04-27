@@ -7,8 +7,10 @@ import configparser
 os.environ['GDK_BACKEND'] = 'x11'
 
 gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
 from gi.repository import Gtk
 from gi.repository import GLib
+from gi.repository import Gdk
 
 
 key_mapping = {uinput.KEY_ESC: "Esc", uinput.KEY_1: "1", uinput.KEY_2: "2", uinput.KEY_3: "3", uinput.KEY_4: "4", uinput.KEY_5: "5", uinput.KEY_6: "6",
@@ -39,8 +41,21 @@ class VirtualKeyboard(Gtk.Window):
         self.set_focus_on_map(False)
         self.set_can_focus(False)
         self.set_accept_focus(False)
-        self.width=0
-        self.height=0
+        # Geometry state variables, initialized to indicate unset
+        self.x_landscape, self.y_landscape = -1, -1
+        self.width_landscape, self.height_landscape = -1, -1
+        self.x_portrait, self.y_portrait = -1, -1
+        self.width_portrait, self.height_portrait = -1, -1
+
+        # Connect to the window's realize signal
+        self.connect("realize", self.on_realize)
+        # Connect configure-event for position/size changes
+        self.connect("configure-event", self.on_configure)
+
+        # Connect to screen change signals to handle rotation and monitor config changes
+        screen = Gdk.Screen.get_default()
+        screen.connect("size-changed", self.on_screen_changed)
+        screen.connect("monitors-changed", self.on_screen_changed)
 
         self.CONFIG_DIR = os.path.expanduser("~/.config/vboard")
         self.CONFIG_FILE = os.path.join(self.CONFIG_DIR, "settings.conf")
@@ -87,8 +102,6 @@ class VirtualKeyboard(Gtk.Window):
             ("Lavender", "230,230,250")
 
         ]
-        if (self.width!=0):
-            self.set_default_size(self.width, self.height)
 
         self.header = Gtk.HeaderBar()
         self.header.set_show_close_button(True)
@@ -138,11 +151,130 @@ class VirtualKeyboard(Gtk.Window):
         for label, color in self.colors:
             self.color_combobox.append_text(label)
 
-    def on_resize(self, widget, event):
-        self.width, self.height = self.get_size()  # Get the current size after resize
+    def on_screen_changed(self, *args):
+        # Apply geometry for the potentially new orientation/resolution
+        self.apply_geometry()
+        return False
 
+    def get_current_orientation(self):
+        """Determines the orientation of the primary monitor."""
+        display = Gdk.Display.get_default()
+        monitor = display.get_primary_monitor()
+        if not monitor:
+            # Fallback to screen size if primary monitor not found
+            screen = Gdk.Screen.get_default()
+            width, height = screen.get_width(), screen.get_height()
+        else:
+            geo = monitor.get_geometry()
+            width, height = geo.width, geo.height
 
+        return "landscape" if width >= height else "portrait"
 
+    def apply_geometry(self):
+        """Applies the saved or default geometry based on current orientation."""
+        self.orientation = self.get_current_orientation()
+
+        changed = False
+        width, height = self.get_saved_size()
+        if width < 0 or height < 0:
+            width, height = self.get_size()
+            self.update_size(width, height)
+            changed = True
+        
+        x, y = self.get_saved_position()
+
+        # Use default position (centered) if not set or invalid
+        if x < 0 or y < 0:
+            display = Gdk.Display.get_default()
+            monitor = display.get_primary_monitor()
+            if monitor:
+                geo = monitor.get_geometry()
+                mon_x, mon_y = geo.x, geo.y
+                mon_width, mon_height = geo.width, geo.height
+            else:
+                screen = Gdk.Screen.get_default()
+                mon_x, mon_y = 0, 0
+                mon_width, mon_height = screen.get_width(), screen.get_height()
+
+            x = mon_x + (mon_width - width) // 2
+            y = mon_y + (mon_height - height) // 2 # Center vertically as well
+            
+            self.update_position(x, y)
+            changed = True
+
+        current_width, current_height = self.get_size()
+        if width != current_width or height != current_height:
+            self.resize(width, height)
+
+        current_x, current_y = self.get_position()
+        if x != current_x or y != current_y:
+            # Move the window to the new position
+            self.move(x, y)
+
+        if changed:
+            self.save_settings()
+
+    def on_realize(self, widget):
+        # Apply initial geometry once the window is realized
+        self.apply_geometry()
+        return False
+
+    def on_configure(self, widget, event):
+        """Handles window move and resize events."""
+        # In debugging, I found that the configure event is triggered right before
+        # the screen change event, with a weird position.
+        # So we need to delay the update to avoid false triggers.
+        GLib.timeout_add(100, self.update_geometry)
+        return False
+
+    def update_geometry(self):
+        self.orientation = self.get_current_orientation()
+
+        # Gdk.EventConfigure contains the window's position relative to its parent (screen)
+        # and its allocated size.
+        current_x, current_y = self.get_position() # Use get_position for screen coordinates
+        current_width, current_height = self.get_size() # Use get_size for actual dimensions
+
+        saved_x, saved_y = self.get_saved_position()
+        saved_width, saved_height = self.get_saved_size()
+
+        changed = False
+        if current_x != saved_x or current_y != saved_y:
+            self.update_position(current_x, current_y)
+            changed = True
+        
+        if current_width != saved_width or current_height != saved_height:
+            self.update_size(current_width, current_height)
+            changed = True
+
+        # Save settings whenever the window is moved or resized
+        if changed:
+            self.save_settings()
+    
+    def update_position(self, x, y):
+        if self.orientation == "landscape":
+            self.x_landscape, self.y_landscape = x, y
+        else: # portrait
+            self.x_portrait, self.y_portrait = x, y
+    
+    def update_size(self, width, height):
+        if self.orientation == "landscape":
+            self.width_landscape, self.height_landscape = width, height
+        else:
+            self.width_portrait, self.height_portrait = width, height
+
+    def get_saved_position(self):
+        if self.orientation == "landscape":
+            return self.x_landscape, self.y_landscape
+        else:
+            return self.x_portrait, self.y_portrait
+
+    def get_saved_size(self):
+        if self.orientation == "landscape":
+            return self.width_landscape, self.height_landscape
+        else:
+            return self.width_portrait, self.height_portrait
+    
     def create_button(self, label_="", callback=None, callback2=None, callbacks=0):
         button= Gtk.Button(label=label_)
         button.set_name("headbar-button")
@@ -341,21 +473,50 @@ class VirtualKeyboard(Gtk.Window):
         try:
             if os.path.exists(self.CONFIG_FILE):
                 self.config.read(self.CONFIG_FILE)
-                self.bg_color = self.config.get("DEFAULT", "bg_color" )
-                self.opacity = self.config.get("DEFAULT", "opacity" )
-                self.text_color = self.config.get("DEFAULT", "text_color", fallback="white" )
-                self.width=self.config.getint("DEFAULT", "width" , fallback=0)
-                self.height=self.config.getint("DEFAULT", "height", fallback=0)
-                print(f"rgba: {self.bg_color}, {self.opacity}")
+                # Read general settings
+                self.bg_color = self.config.get("DEFAULT", "bg_color")
+                self.opacity = self.config.get("DEFAULT", "opacity")
+                self.text_color = self.config.get("DEFAULT", "text_color", fallback="white")
 
-        except configparser.Error as e:
-            print(f"Warning: Could not read config file ({e}). Using default values.")
+                # Read landscape geometry (use old width/height as fallback for compatibility)
+                old_width = self.config.getint("DEFAULT", "width", fallback=-1)
+                old_height = self.config.getint("DEFAULT", "height", fallback=-1)
+                self.x_landscape = self.config.getint("DEFAULT", "x_landscape", fallback=-1)
+                self.y_landscape = self.config.getint("DEFAULT", "y_landscape", fallback=-1)
+                self.width_landscape = self.config.getint("DEFAULT", "width_landscape", fallback=old_width)
+                self.height_landscape = self.config.getint("DEFAULT", "height_landscape", fallback=old_height)
 
+                # Read portrait geometry
+                self.x_portrait = self.config.getint("DEFAULT", "x_portrait", fallback=-1)
+                self.y_portrait = self.config.getint("DEFAULT", "y_portrait", fallback=-1)
+                self.width_portrait = self.config.getint("DEFAULT", "width_portrait", fallback=-1)
+                self.height_portrait = self.config.getint("DEFAULT", "height_portrait", fallback=-1)
+        except (configparser.Error, ValueError) as e:
+            print(f"Warning: Could not read config file or value ({e}). Using default values.")
+            # Reset geometry if reading fails to ensure defaults are used
+            self.x_landscape, self.y_landscape = -1, -1
+            self.width_landscape, self.height_landscape = -1, -1
+            self.x_portrait, self.y_portrait = -1, -1
+            self.width_portrait, self.height_portrait = -1, -1
 
 
     def save_settings(self):
-
-        self.config["DEFAULT"] = {"bg_color": self.bg_color, "opacity": self.opacity, "text_color": self.text_color, "width": self.width, "height": self.height}
+        # Save settings including orientation-specific geometry
+        self.config["DEFAULT"] = {
+            "bg_color": self.bg_color,
+            "opacity": self.opacity,
+            "text_color": self.text_color,
+            # Landscape
+            "x_landscape": str(self.x_landscape),
+            "y_landscape": str(self.y_landscape),
+            "width": str(self.width_landscape),
+            "height": str(self.height_landscape),
+            # Portrait
+            "x_portrait": str(self.x_portrait),
+            "y_portrait": str(self.y_portrait),
+            "width_portrait": str(self.width_portrait),
+            "height_portrait": str(self.height_portrait)
+        }
 
         try:
             with open(self.CONFIG_FILE, "w") as configfile:
@@ -370,6 +531,5 @@ if __name__ == "__main__":
     win.connect("destroy", Gtk.main_quit)
     win.connect("destroy", lambda w: win.save_settings())
     win.show_all()
-    win.connect("configure-event", win.on_resize)
     win.change_visibility()
     Gtk.main()
