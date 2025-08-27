@@ -93,6 +93,7 @@ class VirtualKeyboard(Gtk.Window):
         self.header = Gtk.HeaderBar()
         self.header.set_show_close_button(True)
         self.buttons=[]
+        self.modifier_buttons={}
         self.row_buttons=[]
         self.color_combobox = Gtk.ComboBoxText()
         # Set the header bar as the titlebar of the window
@@ -250,6 +251,11 @@ class VirtualKeyboard(Gtk.Window):
             border: 1px solid #00CACB;
         }}
 
+       #grid button.pressed,
+       #grid button.pressed:hover {{
+            border: 1px solid {self.text_color};
+        }}
+
        tooltip {{
             color: white;
             padding: 5px;
@@ -284,6 +290,8 @@ class VirtualKeyboard(Gtk.Window):
                     button = Gtk.Button(label=key_label)
                 button.connect("clicked", self.on_button_click, key_event)
                 self.row_buttons.append(button)
+                if key_event in self.modifiers:
+                    self.modifier_buttons[key_event] = button
                 if key_label == "Space": width=12
                 elif key_label == "CapsLock": width=3
                 elif key_label == "Shift_R" : width=4
@@ -308,14 +316,22 @@ class VirtualKeyboard(Gtk.Window):
             else:
                 self.row_buttons[pos].set_label(label_parts[0])
 
+    def update_modifier(self, key_event, value):
+      self.modifiers[key_event] = value
+      button = self.modifier_buttons[key_event]
+      style_context = button.get_style_context()
+      if (value):
+          style_context.add_class('pressed')
+      else:
+          style_context.remove_class('pressed')
 
     def on_button_click(self, widget, key_event):
         # If the key event is one of the modifiers, update its state and return.
         if key_event in self.modifiers:
-            self.modifiers[key_event] = not self.modifiers[key_event]
+            self.update_modifier(key_event, not self.modifiers[key_event])
             if(self.modifiers[uinput.KEY_LEFTSHIFT]==True and self.modifiers[uinput.KEY_RIGHTSHIFT]==True):
-                self.modifiers[uinput.KEY_LEFTSHIFT]=False
-                self.modifiers[uinput.KEY_RIGHTSHIFT]=False
+                self.update_modifier(uinput.KEY_LEFTSHIFT, False)
+                self.update_modifier(uinput.KEY_RIGHTSHIFT, False)
             if(self.modifiers[uinput.KEY_LEFTSHIFT]==True or self.modifiers[uinput.KEY_RIGHTSHIFT]==True):
                 self.update_label(True)
             else:
@@ -335,7 +351,7 @@ class VirtualKeyboard(Gtk.Window):
         for mod_key, active in self.modifiers.items():
             if active:
                 self.device.emit(mod_key, 0)
-                self.modifiers[mod_key] = False
+                self.update_modifier(mod_key, False)
 
 
     def read_settings(self):
