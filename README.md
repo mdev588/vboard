@@ -18,6 +18,7 @@ The keyboard supports customizable colors, opacity settings, and can be easily m
 - **Customizable appearance**: Change background color, text color, and opacity
 - **Persistent settings**: Configuration is saved between sessions
 - **Modifier key support**: Use Shift, Ctrl, Alt and Super keys
+- **Hold for repetitive clicks**: Keep holding the mouse button to trigger repeated clicks
 - **Compact interface**: Headerbar with minimal controls to save screen space
 - **Always-on-top**: Stays above other windows for easy access
 
@@ -43,7 +44,7 @@ yay -Syu python-uinput steam-devices
 ### **2. Download vboard**  
 Retrieve the latest version of `vboard.py` using `wget`:  
 ```bash
-wget https://github.com/mdev588/vboard/releases/download/v1.19/vboard.py
+wget https://github.com/mdev588/vboard/releases/download/v1.20/vboard.py
 ```
 
 
