@@ -288,7 +288,9 @@ class VirtualKeyboard(Gtk.Window):
                     button = Gtk.Button(label=key_label[:-2])
                 else:
                     button = Gtk.Button(label=key_label)
-                button.connect("clicked", self.on_button_click, key_event)
+                button.connect("pressed", self.on_button_press, key_event)
+                button.connect("released", self.on_button_release)
+                button.connect("leave-notify-event", self.on_button_release)
                 self.row_buttons.append(button)
                 if key_event in self.modifiers:
                     self.modifier_buttons[key_event] = button
@@ -325,34 +327,62 @@ class VirtualKeyboard(Gtk.Window):
       else:
           style_context.remove_class('pressed')
 
-    def on_button_click(self, widget, key_event):
-        # If the key event is one of the modifiers, update its state and return.
+    def on_button_press(self, widget, key_event):
+        # If it's a modifier, toggle state (like Shift, Ctrl, etc.)
         if key_event in self.modifiers:
             self.update_modifier(key_event, not self.modifiers[key_event])
-            if(self.modifiers[uinput.KEY_LEFTSHIFT]==True and self.modifiers[uinput.KEY_RIGHTSHIFT]==True):
+
+            # prevent both shifts being active at once
+            if self.modifiers[uinput.KEY_LEFTSHIFT] and self.modifiers[uinput.KEY_RIGHTSHIFT]:
                 self.update_modifier(uinput.KEY_LEFTSHIFT, False)
                 self.update_modifier(uinput.KEY_RIGHTSHIFT, False)
-            if(self.modifiers[uinput.KEY_LEFTSHIFT]==True or self.modifiers[uinput.KEY_RIGHTSHIFT]==True):
+
+            # update label state (caps-like effect)
+            if self.modifiers[uinput.KEY_LEFTSHIFT] or self.modifiers[uinput.KEY_RIGHTSHIFT]:
                 self.update_label(True)
             else:
                 self.update_label(False)
-            return
-        # For a normal key, press any active modifiers.
+            return  # modifiers don’t repeat
+
+        # Fire key once immediately
+        self.emit_key(key_event)
+
+        # Start a one-time delay before repeat kicks in (e.g. 400ms)
+        self.delay_source = GLib.timeout_add(400, self.start_repeat, key_event)
+
+    def on_button_release(self, widget, *args):
+        # Cancel both delay and repeat when released
+        if hasattr(self, "delay_source"):
+            GLib.source_remove(self.delay_source)
+            del self.delay_source
+        if hasattr(self, "repeat_source"):
+            GLib.source_remove(self.repeat_source)
+            del self.repeat_source
+
+    def start_repeat(self, key_event):
+        # After the delay, start the repeat loop
+        self.repeat_source = GLib.timeout_add(100, self.repeat_key, key_event)
+        return False  # stop this one-time delay timer
+
+    def repeat_key(self, key_event):
+        self.emit_key(key_event)
+        return True  # keep repeating
+
+    def emit_key(self, key_event):
+        # Apply active modifiers
         for mod_key, active in self.modifiers.items():
             if active:
                 self.device.emit(mod_key, 1)
 
-        # Emit the normal key press.
+        # Emit the key
         self.device.emit(key_event, 1)
-        #time.sleep(0.05)
         self.device.emit(key_event, 0)
         self.update_label(False)
-        # Release the modifiers that were active.
+        # Release modifiers (so they only act as held while sending this key)
         for mod_key, active in self.modifiers.items():
             if active:
                 self.device.emit(mod_key, 0)
                 self.update_modifier(mod_key, False)
-
 
     def read_settings(self):
         # Ensure the config directory exists
