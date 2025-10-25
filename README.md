@@ -58,6 +58,7 @@ python3 vboard.py
 ### **4. Create shortcut (optional)**  
 
 ```bash
+mkdir -p ~/.local/share/applications/
 cat > ~/.local/share/applications/vboard.desktop <<EOF
 [Desktop Entry]
 Exec=bash -c 'python3 ~/vboard.py'
