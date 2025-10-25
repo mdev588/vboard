@@ -98,6 +98,9 @@ class VirtualKeyboard(Gtk.Window):
         self.color_combobox = Gtk.ComboBoxText()
         # Set the header bar as the titlebar of the window
         self.set_titlebar(self.header)
+        self.set_default_icon_name("preferences-desktop-keyboard") 
+        self.header.set_decoration_layout(":minimize,maximize,close")
+
         self.create_settings()
 
         grid = Gtk.Grid()  # Use Grid for layout
@@ -238,6 +241,8 @@ class VirtualKeyboard(Gtk.Window):
         #grid button {{
                     border: none ;
                     background-image: none;
+                    padding: 0px;
+                    margin: 0px;
 
                 }}
 
@@ -269,6 +274,7 @@ class VirtualKeyboard(Gtk.Window):
 
 
         """
+
 
         try:
             provider.load_from_data(css.encode("utf-8"))
